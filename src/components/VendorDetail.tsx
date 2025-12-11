@@ -19,13 +19,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "./ui/popover";
 import { Badge } from "./ui/badge";
 import { Separator } from "./ui/separator";
+import { cn } from "./ui/utils";
 import type {
   VendorData,
   Agreement,
@@ -118,12 +114,10 @@ export function VendorDetail({
     bank: "",
   });
 
-  // Regional Coverage Local State (for the selector)
+  // Regional Coverage Local State
   const [selectedProvince, setSelectedProvince] = useState("");
   const [selectedCity, setSelectedCity] = useState("");
-  const [selectedDistricts, setSelectedDistricts] = useState<
-    string[]
-  >([]);
+  const [selectedDistrict, setSelectedDistrict] = useState(""); // Single select now
 
   useEffect(() => {
     if (!isNewVendor && vendorId) {
@@ -174,48 +168,8 @@ export function VendorDetail({
   }, [vendorId, isNewVendor]);
 
   // --- Regional Coverage Logic ---
-  const handleAddCoverage = () => {
-    if (
-      !selectedProvince ||
-      !selectedCity ||
-      selectedDistricts.length === 0
-    )
-      return;
 
-    const newCoverage: RegionalCoverage = {
-      province: selectedProvince,
-      city: selectedCity,
-      districts: [...selectedDistricts],
-    };
-
-    setFormData({
-      ...formData,
-      regionalCoverages: [
-        ...(formData.regionalCoverages || []),
-        newCoverage,
-      ],
-    });
-
-    // Reset selection
-    setSelectedDistricts([]);
-    setSelectedCity("");
-    // Keep province selected for convenience, or reset it too
-  };
-
-  const handleRemoveCoverage = (index: number) => {
-    const updated = [...(formData.regionalCoverages || [])];
-    updated.splice(index, 1);
-    setFormData({ ...formData, regionalCoverages: updated });
-  };
-
-  const toggleDistrictSelection = (district: string) => {
-    setSelectedDistricts((prev) =>
-      prev.includes(district)
-        ? prev.filter((d) => d !== district)
-        : [...prev, district],
-    );
-  };
-
+  // Get available cities based on selected province
   const getCitiesForProvince = () => {
     return (
       INDONESIA_LOCATIONS.find(
@@ -224,14 +178,110 @@ export function VendorDetail({
     );
   };
 
-  const getDistrictsForCity = () => {
+  // Get available districts based on selected city
+  // AND filter out districts that have already been selected for this vendor
+  const getAvailableDistricts = () => {
     const province = INDONESIA_LOCATIONS.find(
       (p) => p.name === selectedProvince,
     );
-    return (
+    const allDistricts =
       province?.cities.find((c) => c.name === selectedCity)
-        ?.districts || []
+        ?.districts || [];
+
+    // Find if we already have coverage for this province/city
+    const existingCoverage = formData.regionalCoverages?.find(
+      (cov) =>
+        cov.province === selectedProvince &&
+        cov.city === selectedCity,
     );
+
+    if (!existingCoverage) return allDistricts;
+
+    // Filter out already selected districts
+    return allDistricts.filter(
+      (d) => !existingCoverage.districts.includes(d),
+    );
+  };
+
+  const handleAddCoverage = () => {
+    if (!selectedProvince || !selectedCity || !selectedDistrict)
+      return;
+
+    const currentCoverages = [
+      ...(formData.regionalCoverages || []),
+    ];
+    const existingIndex = currentCoverages.findIndex(
+      (cov) =>
+        cov.province === selectedProvince &&
+        cov.city === selectedCity,
+    );
+
+    if (existingIndex >= 0) {
+      // Add district to existing city coverage
+      const updatedDistricts = [
+        ...currentCoverages[existingIndex].districts,
+        selectedDistrict,
+      ];
+      currentCoverages[existingIndex] = {
+        ...currentCoverages[existingIndex],
+        districts: updatedDistricts,
+      };
+    } else {
+      // Create new coverage entry
+      currentCoverages.push({
+        province: selectedProvince,
+        city: selectedCity,
+        districts: [selectedDistrict],
+      });
+    }
+
+    setFormData({
+      ...formData,
+      regionalCoverages: currentCoverages,
+    });
+
+    // Reset District selection only, keep Prov/City for faster entry of next district
+    setSelectedDistrict("");
+  };
+
+  const handleRemoveDistrict = (
+    province: string,
+    city: string,
+    district: string,
+  ) => {
+    const currentCoverages = [
+      ...(formData.regionalCoverages || []),
+    ];
+    const existingIndex = currentCoverages.findIndex(
+      (cov) => cov.province === province && cov.city === city,
+    );
+
+    if (existingIndex >= 0) {
+      const updatedDistricts = currentCoverages[
+        existingIndex
+      ].districts.filter((d) => d !== district);
+
+      if (updatedDistricts.length === 0) {
+        // If no districts left, remove the whole coverage entry
+        currentCoverages.splice(existingIndex, 1);
+      } else {
+        currentCoverages[existingIndex] = {
+          ...currentCoverages[existingIndex],
+          districts: updatedDistricts,
+        };
+      }
+
+      setFormData({
+        ...formData,
+        regionalCoverages: currentCoverages,
+      });
+    }
+  };
+
+  const handleRemoveWholeCoverage = (index: number) => {
+    const updated = [...(formData.regionalCoverages || [])];
+    updated.splice(index, 1);
+    setFormData({ ...formData, regionalCoverages: updated });
   };
 
   // --- Agreement Logic ---
@@ -551,19 +601,19 @@ export function VendorDetail({
 
             <Separator className="my-6" />
 
-            {/* Req 9: Regional Coverage */}
+            {/* Req 9 & New Req 1: Regional Coverage (Cascading Single Select) */}
             <h4 className="font-medium mb-3">
               Regional Coverage
             </h4>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 items-start">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4 items-end">
               <div>
-                <Label>Province</Label>
+                <Label className="mb-2 block">Province</Label>
                 <Select
                   value={selectedProvince}
                   onValueChange={(val) => {
                     setSelectedProvince(val);
                     setSelectedCity("");
-                    setSelectedDistricts([]);
+                    setSelectedDistrict("");
                   }}
                 >
                   <SelectTrigger className="bg-input-background">
@@ -579,12 +629,14 @@ export function VendorDetail({
                 </Select>
               </div>
               <div>
-                <Label>City / Regency</Label>
+                <Label className="mb-2 block">
+                  City / Regency
+                </Label>
                 <Select
                   value={selectedCity}
                   onValueChange={(val) => {
                     setSelectedCity(val);
-                    setSelectedDistricts([]);
+                    setSelectedDistrict("");
                   }}
                   disabled={!selectedProvince}
                 >
@@ -601,121 +653,104 @@ export function VendorDetail({
                 </Select>
               </div>
               <div>
-                <Label className="mb-2 block">
-                  District (Multi-select)
-                </Label>
-                <Popover>
-                  <PopoverTrigger
-                    disabled={!selectedCity}
-                    className="w-full"
-                  >
-                    <div className="flex items-center justify-between w-full px-3 py-2 border border-gray-300 rounded-md bg-input-background hover:bg-gray-100 cursor-pointer">
-                      <span className="text-sm text-gray-700">
-                        {selectedDistricts.length > 0
-                          ? `${selectedDistricts.length} selected`
-                          : "Select Districts"}
-                      </span>
-                      <Plus className="w-4 h-4 ml-2" />
-                    </div>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[250px] p-0" align="start">
-                    <ScrollArea className="h-[200px]">
-                      <div className="p-4 space-y-2">
-                        {selectedCity ? (
-                          getDistrictsForCity().map((district) => (
-                            <div
-                              key={district}
-                              className="flex items-center space-x-2"
-                            >
-                              <Checkbox
-                                id={`dist-${district}`}
-                                checked={selectedDistricts.includes(
-                                  district,
-                                )}
-                                onCheckedChange={() =>
-                                  toggleDistrictSelection(district)
-                                }
-                              />
-                              <label
-                                htmlFor={`dist-${district}`}
-                                className="text-sm cursor-pointer select-none flex-1"
-                              >
-                                {district}
-                              </label>
-                            </div>
-                          ))
-                        ) : (
-                          <p className="text-sm text-muted-foreground p-2">
-                            Select a City first
-                          </p>
-                        )}
-                      </div>
-                    </ScrollArea>
-                  </PopoverContent>
-                </Popover>
+                <Label className="mb-2 block">District</Label>
+                <Select
+                  value={selectedDistrict}
+                  onValueChange={(val) =>
+                    setSelectedDistrict(val)
+                  }
+                  disabled={!selectedCity}
+                >
+                  <SelectTrigger className="bg-input-background">
+                    <SelectValue placeholder="Select District" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {selectedCity &&
+                      getAvailableDistricts().map((d) => (
+                        <SelectItem key={d} value={d}>
+                          {d}
+                        </SelectItem>
+                      ))}
+                    {selectedCity &&
+                      getAvailableDistricts().length === 0 && (
+                        <div className="p-2 text-sm text-muted-foreground text-center">
+                          All districts added
+                        </div>
+                      )}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Button
+                  onClick={handleAddCoverage}
+                  className="w-full bg-[#17A2B8] hover:bg-[#138496] text-white"
+                  disabled={
+                    !selectedProvince ||
+                    !selectedCity ||
+                    !selectedDistrict
+                  }
+                >
+                  <Plus className="w-4 h-4 mr-2" /> Add
+                </Button>
               </div>
             </div>
-            {/* Show selected districts as badges below the grid */}
-            {selectedDistricts.length > 0 && (
-              <div className="flex flex-wrap gap-1 mb-4 pl-1">
-                <span className="text-sm text-gray-600 font-medium mr-2">Selected Districts:</span>
-                {selectedDistricts.map((d) => (
-                  <Badge
-                    key={d}
-                    variant="secondary"
-                    className="text-xs"
-                  >
-                    {d}
-                  </Badge>
-                ))}
-              </div>
-            )}
-            <Button
-              onClick={handleAddCoverage}
-              size="sm"
-              className="mb-4 bg-[#17A2B8] hover:bg-[#138496] text-white"
-              disabled={
-                !selectedProvince ||
-                !selectedCity ||
-                selectedDistricts.length === 0
-              }
-            >
-              <Plus className="w-4 h-4 mr-2" /> Add Coverage
-            </Button>
 
             {/* List Selected Coverages */}
-            <div className="space-y-2">
-              {formData.regionalCoverages?.map((cov, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-start justify-between bg-gray-50 p-3 rounded border"
-                >
-                  <div>
-                    <p className="font-medium text-sm">
-                      {cov.province} - {cov.city}
-                    </p>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {cov.districts.map((d) => (
-                        <Badge
-                          key={d}
-                          variant="secondary"
-                          className="text-xs"
-                        >
-                          {d}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleRemoveCoverage(idx)}
-                    className="text-destructive h-6 w-6"
-                  >
-                    <X className="w-4 h-4" />
-                  </Button>
+            <div className="space-y-3 mt-6">
+              {formData.regionalCoverages &&
+              formData.regionalCoverages.length > 0 ? (
+                <div className="border rounded-md divide-y">
+                  {formData.regionalCoverages.map(
+                    (cov, idx) => (
+                      <div
+                        key={`${cov.province}-${cov.city}`}
+                        className="p-3 bg-gray-50 flex flex-col gap-2"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-sm text-gray-800">
+                            {cov.province} &mdash; {cov.city}
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              handleRemoveWholeCoverage(idx)
+                            }
+                            className="text-red-500 hover:text-red-700 h-6 px-2 text-xs"
+                          >
+                            Remove Region
+                          </Button>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {cov.districts.map((d) => (
+                            <Badge
+                              key={d}
+                              variant="secondary"
+                              className="text-xs flex items-center gap-1 px-2 py-1 bg-white border border-gray-200"
+                            >
+                              {d}
+                              <X
+                                className="h-3 w-3 cursor-pointer hover:text-red-500 transition-colors"
+                                onClick={() =>
+                                  handleRemoveDistrict(
+                                    cov.province,
+                                    cov.city,
+                                    d,
+                                  )
+                                }
+                              />
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    ),
+                  )}
                 </div>
-              ))}
+              ) : (
+                <div className="text-center p-4 border border-dashed rounded-md text-gray-500 text-sm">
+                  No regional coverage added yet.
+                </div>
+              )}
             </div>
           </div>
 
