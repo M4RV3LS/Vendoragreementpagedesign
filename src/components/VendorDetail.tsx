@@ -1,17 +1,37 @@
-import { useState, useEffect } from 'react';
-import { Menu, Plus, Trash2, Upload, ArrowLeft } from 'lucide-react';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
-import { Checkbox } from './ui/checkbox';
+import { useState, useEffect } from "react";
+import {
+  Menu,
+  Plus,
+  Trash2,
+  Upload,
+  ArrowLeft,
+  X,
+} from "lucide-react";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
+import { Checkbox } from "./ui/checkbox";
+import { ScrollArea } from "./ui/scroll-area";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from './ui/select';
-import type { VendorData, Agreement } from '../App';
+} from "./ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "./ui/popover";
+import { Badge } from "./ui/badge";
+import { Separator } from "./ui/separator";
+import type {
+  VendorData,
+  Agreement,
+  RegionalCoverage,
+} from "../App";
+import { INDONESIA_LOCATIONS } from "../src/data/mockLocationData";
 
 interface VendorDetailProps {
   vendorId: string | null;
@@ -19,221 +39,335 @@ interface VendorDetailProps {
   onBack: () => void;
 }
 
-const INDONESIA_PROVINCES = [
-  'Aceh',
-  'Sumatera Utara',
-  'Sumatera Barat',
-  'Riau',
-  'Kepulauan Riau',
-  'Jambi',
-  'Sumatera Selatan',
-  'Bangka Belitung',
-  'Bengkulu',
-  'Lampung',
-  'DKI Jakarta',
-  'Jawa Barat',
-  'Jawa Tengah',
-  'DI Yogyakarta',
-  'Jawa Timur',
-  'Banten',
-  'Bali',
-  'Nusa Tenggara Barat',
-  'Nusa Tenggara Timur',
-  'Kalimantan Barat',
-  'Kalimantan Tengah',
-  'Kalimantan Selatan',
-  'Kalimantan Timur',
-  'Kalimantan Utara',
-  'Sulawesi Utara',
-  'Gorontalo',
-  'Sulawesi Tengah',
-  'Sulawesi Barat',
-  'Sulawesi Selatan',
-  'Sulawesi Tenggara',
-  'Maluku',
-  'Maluku Utara',
-  'Papua',
-  'Papua Barat',
-  'Papua Tengah',
-  'Papua Pegunungan',
-  'Papua Selatan',
-  'Papua Barat Daya',
+const PAYMENT_METHODS = [
+  "Bank Transfer",
+  "Cash",
+  "Cheque",
+  "E-Wallet",
+];
+const AGREEMENT_TYPES = [
+  "Lease Agreement",
+  "Service Level Agreement",
+  "Supply Agreement",
+  "NDA",
 ];
 
-const PAYMENT_METHODS = ['Bank Transfer', 'Cash', 'Cheque', 'E-Wallet'];
+// Helper function to calculate agreement status based on dates
+const calculateAgreementStatus = (
+  startDate: string,
+  endDate: string,
+): "Active" | "Inactive" => {
+  if (!startDate || !endDate) return "Inactive";
 
-export function VendorDetail({ vendorId, isNewVendor, onBack }: VendorDetailProps) {
-  const [formData, setFormData] = useState<Partial<VendorData>>({
-    vendorCode: isNewVendor ? `VND${Date.now().toString().slice(-6)}` : '',
-    vendorName: '',
-    regions: [],
-    email: '',
-    address: '',
-    phone: '',
-    nibNumber: '',
-    ktpNumber: '',
-    bankName: '',
-    bankAccountName: '',
-    bankAccountNumber: '',
-    ppn: '',
-    serviceCharge: '',
-    pb1: '',
-    paymentMethod: '',
-    agreements: [],
+  const today = new Date();
+  today.setHours(0, 0, 0, 0); // Reset time for accurate date comparison
+
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+
+  // Check if today is between start and end dates (inclusive)
+  if (today >= start && today <= end) {
+    return "Active";
+  }
+
+  return "Inactive";
+};
+
+// Mock existing NPWPs for validation (Req 8)
+const EXISTING_NPWPS = [
+  "12.345.678.9-012.000",
+  "98.765.432.1-321.000",
+];
+
+export function VendorDetail({
+  vendorId,
+  isNewVendor,
+  onBack,
+}: VendorDetailProps) {
+  const [formData, setFormData] = useState<Partial<VendorData>>(
+    {
+      vendorCode: isNewVendor
+        ? `VND${Date.now().toString().slice(-6)}`
+        : "",
+      vendorName: "",
+      picName: "",
+      email1: "",
+      email2: "",
+      regionalCoverages: [],
+      address: "",
+      phone: "",
+      nibNumber: "",
+      ktpNumber: "",
+      npwpNumber: "",
+      bankName: "",
+      bankAccountName: "",
+      bankAccountNumber: "",
+      ppn: "",
+      serviceCharge: "",
+      pb1: "",
+      paymentMethod: "",
+      agreements: [],
+    },
+  );
+
+  // File Names State
+  const [fileNames, setFileNames] = useState({
+    nib: "",
+    ktp: "",
+    npwp: "",
+    bank: "",
   });
 
-  const [nibFileName, setNibFileName] = useState('');
-  const [ktpFileName, setKtpFileName] = useState('');
-  const [bankFileName, setBankFileName] = useState('');
+  // Regional Coverage Local State (for the selector)
+  const [selectedProvince, setSelectedProvince] = useState("");
+  const [selectedCity, setSelectedCity] = useState("");
+  const [selectedDistricts, setSelectedDistricts] = useState<
+    string[]
+  >([]);
 
   useEffect(() => {
     if (!isNewVendor && vendorId) {
       // Load vendor data - Mock data for demonstration
       setFormData({
-        vendorCode: 'VND001',
-        vendorName: 'PT Mitra Sejahtera',
-        regions: ['DKI Jakarta', 'Jawa Barat'],
-        email: 'contact@mitrasejahtera.com',
-        address: 'Jl. Sudirman No. 123, Jakarta',
-        phone: '+62 21 1234567',
-        nibNumber: '1234567890',
-        ktpNumber: '3201234567890123',
-        bankName: 'Bank Mandiri',
-        bankAccountName: 'PT Mitra Sejahtera',
-        bankAccountNumber: '1234567890',
-        ppn: '11',
-        serviceCharge: '5',
-        pb1: '10',
-        paymentMethod: 'Bank Transfer',
+        vendorCode: "VND001",
+        vendorName: "PT Mitra Sejahtera",
+        picName: "Budi Santoso",
+        email1: "contact@mitrasejahtera.com",
+        email2: "finance@mitrasejahtera.com",
+        regionalCoverages: [
+          {
+            province: "DKI Jakarta",
+            city: "Jakarta Selatan",
+            districts: ["Tebet", "Setiabudi"],
+          },
+        ],
+        address: "Jl. Sudirman No. 123, Jakarta",
+        phone: "+62 21 1234567",
+        nibNumber: "1234567890",
+        ktpNumber: "3201234567890123",
+        npwpNumber: "12.345.678.9-012.000",
+        bankName: "Bank Mandiri",
+        bankAccountName: "PT Mitra Sejahtera",
+        bankAccountNumber: "1234567890",
+        ppn: "11",
+        serviceCharge: "5",
+        pb1: "10",
+        paymentMethod: "Bank Transfer",
         agreements: [
           {
-            id: '1',
-            documentNumber: 'AGR-2025-001',
-            startDate: '2025-01-01',
-            endDate: '2026-12-31',
+            id: "1",
+            documentNumber: "AGR-2025-001",
+            agreementType: "Lease Agreement",
+            startDate: "2025-01-01",
+            endDate: "2026-12-31",
+            status: "Active",
             file: null,
           },
         ],
       });
+      setFileNames({
+        ...fileNames,
+        npwp: "npwp_doc.pdf",
+        bank: "bank_doc.pdf",
+      });
     }
   }, [vendorId, isNewVendor]);
 
-  const handleRegionToggle = (province: string) => {
-    const newRegions = formData.regions?.includes(province)
-      ? formData.regions.filter((r) => r !== province)
-      : [...(formData.regions || []), province];
-    setFormData({ ...formData, regions: newRegions });
+  // --- Regional Coverage Logic ---
+  const handleAddCoverage = () => {
+    if (
+      !selectedProvince ||
+      !selectedCity ||
+      selectedDistricts.length === 0
+    )
+      return;
+
+    const newCoverage: RegionalCoverage = {
+      province: selectedProvince,
+      city: selectedCity,
+      districts: [...selectedDistricts],
+    };
+
+    setFormData({
+      ...formData,
+      regionalCoverages: [
+        ...(formData.regionalCoverages || []),
+        newCoverage,
+      ],
+    });
+
+    // Reset selection
+    setSelectedDistricts([]);
+    setSelectedCity("");
+    // Keep province selected for convenience, or reset it too
   };
 
+  const handleRemoveCoverage = (index: number) => {
+    const updated = [...(formData.regionalCoverages || [])];
+    updated.splice(index, 1);
+    setFormData({ ...formData, regionalCoverages: updated });
+  };
+
+  const toggleDistrictSelection = (district: string) => {
+    setSelectedDistricts((prev) =>
+      prev.includes(district)
+        ? prev.filter((d) => d !== district)
+        : [...prev, district],
+    );
+  };
+
+  const getCitiesForProvince = () => {
+    return (
+      INDONESIA_LOCATIONS.find(
+        (p) => p.name === selectedProvince,
+      )?.cities || []
+    );
+  };
+
+  const getDistrictsForCity = () => {
+    const province = INDONESIA_LOCATIONS.find(
+      (p) => p.name === selectedProvince,
+    );
+    return (
+      province?.cities.find((c) => c.name === selectedCity)
+        ?.districts || []
+    );
+  };
+
+  // --- Agreement Logic ---
   const handleAddAgreement = () => {
     const newAgreement: Agreement = {
       id: Date.now().toString(),
-      documentNumber: '',
-      startDate: '',
-      endDate: '',
+      documentNumber: "",
+      agreementType: "",
+      startDate: "",
+      endDate: "",
+      status: "Inactive", // Default status
       file: null,
     };
     setFormData({
       ...formData,
-      agreements: [...(formData.agreements || []), newAgreement],
+      agreements: [
+        ...(formData.agreements || []),
+        newAgreement,
+      ],
     });
   };
 
   const handleRemoveAgreement = (agreementId: string) => {
     setFormData({
       ...formData,
-      agreements: formData.agreements?.filter((a) => a.id !== agreementId) || [],
+      agreements:
+        formData.agreements?.filter(
+          (a) => a.id !== agreementId,
+        ) || [],
     });
   };
 
   const handleAgreementChange = (
     agreementId: string,
     field: keyof Agreement,
-    value: string
+    value: string,
   ) => {
+    const updatedAgreements = formData.agreements?.map((a) => {
+      if (a.id !== agreementId) return a;
+
+      const updatedAgreement = { ...a, [field]: value };
+
+      // Auto-calculate status when start or end date changes
+      if (field === "startDate" || field === "endDate") {
+        const startDate =
+          field === "startDate" ? value : a.startDate;
+        const endDate = field === "endDate" ? value : a.endDate;
+        updatedAgreement.status = calculateAgreementStatus(
+          startDate,
+          endDate,
+        );
+      }
+
+      return updatedAgreement;
+    });
+
     setFormData({
       ...formData,
-      agreements: formData.agreements?.map((a) =>
-        a.id === agreementId ? { ...a, [field]: value } : a
-      ),
+      agreements: updatedAgreements,
     });
   };
 
+  // --- File Upload Logic ---
   const handleFileUpload = (
-    type: 'nib' | 'ktp' | 'bank',
-    event: React.ChangeEvent<HTMLInputElement>
+    type: keyof typeof fileNames,
+    event: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const file = event.target.files?.[0];
     if (file) {
-      if (type === 'nib') setNibFileName(file.name);
-      if (type === 'ktp') setKtpFileName(file.name);
-      if (type === 'bank') setBankFileName(file.name);
+      setFileNames((prev) => ({ ...prev, [type]: file.name }));
     }
   };
 
+  // --- Save & Validation ---
   const handleSave = () => {
     // Validation
-    if (!formData.vendorName) {
-      alert('Vendor Name is required');
-      return;
+    if (!formData.vendorName)
+      return alert("Vendor Name is required");
+    if (!formData.picName) return alert("PIC Name is required"); // Req 1
+    if (!formData.email1) return alert("Email 1 is required"); // Req 2
+    if (!formData.email2) return alert("Email 2 is required"); // Req 2
+    if (
+      !formData.regionalCoverages ||
+      formData.regionalCoverages.length === 0
+    ) {
+      return alert(
+        "At least one Regional Coverage must be added",
+      );
     }
-    if (!formData.regions || formData.regions.length === 0) {
-      alert('At least one Region must be selected');
-      return;
+    if (!formData.address) return alert("Address is required");
+    if (!formData.phone) return alert("Phone is required");
+
+    // Req 6 Validation
+    if (!formData.npwpNumber)
+      return alert("NPWP Number is required");
+    if (!fileNames.npwp) return alert("NPWP File is required");
+    if (!formData.bankName)
+      return alert("Bank Name is required");
+    if (!formData.bankAccountNumber)
+      return alert("Bank Account Number is required");
+    // Note: KTP and NIB are now optional (Req 6)
+
+    // Req 8: Duplicate NPWP Check
+    if (
+      isNewVendor &&
+      EXISTING_NPWPS.includes(formData.npwpNumber || "")
+    ) {
+      return alert(
+        "This NPWP Number is already registered to another vendor.",
+      );
     }
-    if (!formData.email) {
-      alert('Email is required');
-      return;
-    }
-    if (!formData.address) {
-      alert('Address is required');
-      return;
-    }
-    if (!formData.phone) {
-      alert('Phone is required');
-      return;
-    }
-    if (!formData.ppn || !formData.serviceCharge || !formData.pb1 || !formData.paymentMethod) {
-      alert('All Tax and Fees Configuration fields are required');
-      return;
-    }
-    if (!formData.agreements || formData.agreements.length === 0) {
-      alert('At least one Agreement is required');
-      return;
+
+    if (
+      !formData.agreements ||
+      formData.agreements.length === 0
+    ) {
+      return alert("At least one Agreement is required");
     }
 
     // Save logic would go here
-    alert('Vendor saved successfully!');
+    alert("Vendor saved successfully!");
     onBack();
   };
 
   return (
     <div className="flex w-full">
-      {/* Sidebar */}
+      {/* Sidebar - Same as before */}
       <aside className="w-64 bg-[#2C3E50] text-white min-h-screen flex-shrink-0">
         <div className="p-4">
           <h1 className="text-white">Red Spark</h1>
         </div>
-
         <nav className="mt-8">
           <div className="px-4 py-2">
             <button className="flex items-center justify-between w-full text-left text-white hover:bg-[#34495E] px-3 py-2 rounded">
               <span>Master</span>
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M19 9l-7 7-7-7"
-                />
-              </svg>
             </button>
-
             <div className="ml-4 mt-2 space-y-1">
               <a
                 href="#"
@@ -247,14 +381,16 @@ export function VendorDetail({ vendorId, isNewVendor, onBack }: VendorDetailProp
       </aside>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col h-screen overflow-hidden">
         {/* Header */}
-        <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+        <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between flex-shrink-0">
           <button className="text-gray-600">
             <Menu className="w-6 h-6" />
           </button>
           <div className="flex items-center gap-4">
-            <span className="text-teal-500">Marvel Sublekti Sulastri</span>
+            <span className="text-teal-500">
+              Marvel Sublekti Sulastri
+            </span>
             <Button className="bg-[#E74C3C] hover:bg-[#C0392B] text-white">
               Logout
             </Button>
@@ -275,17 +411,22 @@ export function VendorDetail({ vendorId, isNewVendor, onBack }: VendorDetailProp
           </div>
 
           <h2 className="mb-6">
-            {isNewVendor ? 'Create New Vendor' : 'Vendor Detail'}
+            {isNewVendor
+              ? "Create New Vendor"
+              : "Vendor Detail"}
           </h2>
 
           {/* General Information */}
           <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-            <h3 className="mb-4 pb-2 border-b">General Information</h3>
-
+            <h3 className="mb-4 pb-2 border-b">
+              General Information
+            </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Vendor Code & Name */}
               <div>
                 <Label htmlFor="vendorCode">
-                  Vendor Code <span className="text-red-500">*</span>
+                  Vendor Code{" "}
+                  <span className="text-red-500">*</span>
                 </Label>
                 <Input
                   id="vendorCode"
@@ -293,67 +434,103 @@ export function VendorDetail({ vendorId, isNewVendor, onBack }: VendorDetailProp
                   disabled
                   className="bg-gray-100 border-gray-300"
                 />
-                <p className="text-xs text-gray-500 mt-1">
-                  Generated Automatically
-                </p>
               </div>
-
               <div>
                 <Label htmlFor="vendorName">
-                  Vendor Name <span className="text-red-500">*</span>
+                  Vendor Name{" "}
+                  <span className="text-red-500">*</span>
                 </Label>
                 <Input
                   id="vendorName"
                   value={formData.vendorName}
                   onChange={(e) =>
-                    setFormData({ ...formData, vendorName: e.target.value })
+                    setFormData({
+                      ...formData,
+                      vendorName: e.target.value,
+                    })
                   }
-                  placeholder="Enter vendor name"
                   className="bg-input-background border-gray-300"
                 />
               </div>
 
-              <div className="md:col-span-2">
-                <Label>
-                  Regions <span className="text-red-500">*</span>
+              {/* Req 1: PIC Name */}
+              <div>
+                <Label htmlFor="picName">
+                  PIC Name{" "}
+                  <span className="text-red-500">*</span>
                 </Label>
-                <div className="mt-2 max-h-48 overflow-y-auto border border-gray-300 rounded-md p-4 bg-input-background">
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    {INDONESIA_PROVINCES.map((province) => (
-                      <div key={province} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={province}
-                          checked={formData.regions?.includes(province)}
-                          onCheckedChange={() => handleRegionToggle(province)}
-                        />
-                        <label
-                          htmlFor={province}
-                          className="text-sm cursor-pointer"
-                        >
-                          {province}
-                        </label>
-                      </div>
-                    ))}
-                  </div>
+                <Input
+                  id="picName"
+                  value={formData.picName}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      picName: e.target.value,
+                    })
+                  }
+                  placeholder="Enter PIC Name"
+                  className="bg-input-background border-gray-300"
+                />
+              </div>
+
+              {/* Req 2: Split Email */}
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <Label htmlFor="email1">
+                    Email 1{" "}
+                    <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="email1"
+                    type="email"
+                    value={formData.email1}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        email1: e.target.value,
+                      })
+                    }
+                    className="bg-input-background border-gray-300"
+                  />
+                </div>
+                <div className="flex-1">
+                  <Label htmlFor="email2">
+                    Email 2{" "}
+                    <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="email2"
+                    type="email"
+                    value={formData.email2}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        email2: e.target.value,
+                      })
+                    }
+                    className="bg-input-background border-gray-300"
+                  />
                 </div>
               </div>
 
-              <div>
-                <Label htmlFor="email">
-                  Email <span className="text-red-500">*</span>
+              {/* Address & Phone */}
+              <div className="md:col-span-1">
+                <Label htmlFor="address">
+                  Address{" "}
+                  <span className="text-red-500">*</span>
                 </Label>
                 <Input
-                  id="email"
-                  type="email"
-                  value={formData.email}
+                  id="address"
+                  value={formData.address}
                   onChange={(e) =>
-                    setFormData({ ...formData, email: e.target.value })
+                    setFormData({
+                      ...formData,
+                      address: e.target.value,
+                    })
                   }
-                  placeholder="Enter email address"
                   className="bg-input-background border-gray-300"
                 />
               </div>
-
               <div>
                 <Label htmlFor="phone">
                   Phone <span className="text-red-500">*</span>
@@ -362,56 +539,270 @@ export function VendorDetail({ vendorId, isNewVendor, onBack }: VendorDetailProp
                   id="phone"
                   value={formData.phone}
                   onChange={(e) =>
-                    setFormData({ ...formData, phone: e.target.value })
+                    setFormData({
+                      ...formData,
+                      phone: e.target.value,
+                    })
                   }
-                  placeholder="Enter phone number"
                   className="bg-input-background border-gray-300"
                 />
               </div>
+            </div>
 
-              <div className="md:col-span-2">
-                <Label htmlFor="address">
-                  Address <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="address"
-                  value={formData.address}
-                  onChange={(e) =>
-                    setFormData({ ...formData, address: e.target.value })
-                  }
-                  placeholder="Enter full address"
-                  className="bg-input-background border-gray-300"
-                />
+            <Separator className="my-6" />
+
+            {/* Req 9: Regional Coverage */}
+            <h4 className="font-medium mb-3">
+              Regional Coverage
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 items-start">
+              <div>
+                <Label>Province</Label>
+                <Select
+                  value={selectedProvince}
+                  onValueChange={(val) => {
+                    setSelectedProvince(val);
+                    setSelectedCity("");
+                    setSelectedDistricts([]);
+                  }}
+                >
+                  <SelectTrigger className="bg-input-background">
+                    <SelectValue placeholder="Select Province" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {INDONESIA_LOCATIONS.map((p) => (
+                      <SelectItem key={p.name} value={p.name}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
+              <div>
+                <Label>City / Regency</Label>
+                <Select
+                  value={selectedCity}
+                  onValueChange={(val) => {
+                    setSelectedCity(val);
+                    setSelectedDistricts([]);
+                  }}
+                  disabled={!selectedProvince}
+                >
+                  <SelectTrigger className="bg-input-background">
+                    <SelectValue placeholder="Select City" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {getCitiesForProvince().map((c) => (
+                      <SelectItem key={c.name} value={c.name}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="mb-2 block">
+                  District (Multi-select)
+                </Label>
+                <Popover>
+                  <PopoverTrigger
+                    disabled={!selectedCity}
+                    className="w-full"
+                  >
+                    <div className="flex items-center justify-between w-full px-3 py-2 border border-gray-300 rounded-md bg-input-background hover:bg-gray-100 cursor-pointer">
+                      <span className="text-sm text-gray-700">
+                        {selectedDistricts.length > 0
+                          ? `${selectedDistricts.length} selected`
+                          : "Select Districts"}
+                      </span>
+                      <Plus className="w-4 h-4 ml-2" />
+                    </div>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[250px] p-0" align="start">
+                    <ScrollArea className="h-[200px]">
+                      <div className="p-4 space-y-2">
+                        {selectedCity ? (
+                          getDistrictsForCity().map((district) => (
+                            <div
+                              key={district}
+                              className="flex items-center space-x-2"
+                            >
+                              <Checkbox
+                                id={`dist-${district}`}
+                                checked={selectedDistricts.includes(
+                                  district,
+                                )}
+                                onCheckedChange={() =>
+                                  toggleDistrictSelection(district)
+                                }
+                              />
+                              <label
+                                htmlFor={`dist-${district}`}
+                                className="text-sm cursor-pointer select-none flex-1"
+                              >
+                                {district}
+                              </label>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-sm text-muted-foreground p-2">
+                            Select a City first
+                          </p>
+                        )}
+                      </div>
+                    </ScrollArea>
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
+            {/* Show selected districts as badges below the grid */}
+            {selectedDistricts.length > 0 && (
+              <div className="flex flex-wrap gap-1 mb-4 pl-1">
+                <span className="text-sm text-gray-600 font-medium mr-2">Selected Districts:</span>
+                {selectedDistricts.map((d) => (
+                  <Badge
+                    key={d}
+                    variant="secondary"
+                    className="text-xs"
+                  >
+                    {d}
+                  </Badge>
+                ))}
+              </div>
+            )}
+            <Button
+              onClick={handleAddCoverage}
+              size="sm"
+              className="mb-4 bg-[#17A2B8] hover:bg-[#138496] text-white"
+              disabled={
+                !selectedProvince ||
+                !selectedCity ||
+                selectedDistricts.length === 0
+              }
+            >
+              <Plus className="w-4 h-4 mr-2" /> Add Coverage
+            </Button>
+
+            {/* List Selected Coverages */}
+            <div className="space-y-2">
+              {formData.regionalCoverages?.map((cov, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-start justify-between bg-gray-50 p-3 rounded border"
+                >
+                  <div>
+                    <p className="font-medium text-sm">
+                      {cov.province} - {cov.city}
+                    </p>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {cov.districts.map((d) => (
+                        <Badge
+                          key={d}
+                          variant="secondary"
+                          className="text-xs"
+                        >
+                          {d}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleRemoveCoverage(idx)}
+                    className="text-destructive h-6 w-6"
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              ))}
             </div>
           </div>
 
           {/* Legal and Admin Information */}
           <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-            <h3 className="mb-4 pb-2 border-b">Legal and Admin Information</h3>
-
+            <h3 className="mb-4 pb-2 border-b">
+              Legal and Admin Information
+            </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Req 6: NPWP (Mandatory) */}
               <div>
-                <Label htmlFor="nibNumber">NIB Number</Label>
+                <Label htmlFor="npwpNumber">
+                  NPWP Number{" "}
+                  <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="npwpNumber"
+                  value={formData.npwpNumber}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      npwpNumber: e.target.value,
+                    })
+                  }
+                  placeholder="xx.xxx.xxx.x-xxx.xxx"
+                  className="bg-input-background border-gray-300"
+                />
+              </div>
+              <div>
+                <Label htmlFor="npwpFile">
+                  NPWP File{" "}
+                  <span className="text-red-500">*</span>
+                </Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="npwpFile"
+                    type="file"
+                    onChange={(e) =>
+                      handleFileUpload("npwp", e)
+                    }
+                    className="hidden"
+                  />
+                  <label
+                    htmlFor="npwpFile"
+                    className="flex-1 flex items-center justify-between px-3 py-2 border border-gray-300 rounded-md bg-input-background cursor-pointer hover:bg-gray-100"
+                  >
+                    <span className="text-sm text-gray-500">
+                      {fileNames.npwp || "Choose file..."}
+                    </span>
+                    <Upload className="w-4 h-4 text-gray-400" />
+                  </label>
+                </div>
+              </div>
+
+              {/* NIB & KTP (Optional) */}
+              <div>
+                <Label htmlFor="nibNumber">
+                  NIB Number{" "}
+                  <span className="text-gray-400 text-xs">
+                    (Optional)
+                  </span>
+                </Label>
                 <Input
                   id="nibNumber"
                   type="number"
                   value={formData.nibNumber}
                   onChange={(e) =>
-                    setFormData({ ...formData, nibNumber: e.target.value })
+                    setFormData({
+                      ...formData,
+                      nibNumber: e.target.value,
+                    })
                   }
-                  placeholder="Enter NIB number"
                   className="bg-input-background border-gray-300"
                 />
               </div>
-
               <div>
-                <Label htmlFor="nibFile">NIB File Upload</Label>
+                <Label htmlFor="nibFile">
+                  NIB File{" "}
+                  <span className="text-gray-400 text-xs">
+                    (Optional)
+                  </span>
+                </Label>
                 <div className="flex gap-2">
                   <Input
                     id="nibFile"
                     type="file"
-                    onChange={(e) => handleFileUpload('nib', e)}
+                    onChange={(e) => handleFileUpload("nib", e)}
                     className="hidden"
                   />
                   <label
@@ -419,7 +810,7 @@ export function VendorDetail({ vendorId, isNewVendor, onBack }: VendorDetailProp
                     className="flex-1 flex items-center justify-between px-3 py-2 border border-gray-300 rounded-md bg-input-background cursor-pointer hover:bg-gray-100"
                   >
                     <span className="text-sm text-gray-500">
-                      {nibFileName || 'Choose file...'}
+                      {fileNames.nib || "Choose file..."}
                     </span>
                     <Upload className="w-4 h-4 text-gray-400" />
                   </label>
@@ -427,26 +818,37 @@ export function VendorDetail({ vendorId, isNewVendor, onBack }: VendorDetailProp
               </div>
 
               <div>
-                <Label htmlFor="ktpNumber">KTP Number</Label>
+                <Label htmlFor="ktpNumber">
+                  KTP Number{" "}
+                  <span className="text-gray-400 text-xs">
+                    (Optional)
+                  </span>
+                </Label>
                 <Input
                   id="ktpNumber"
                   type="number"
                   value={formData.ktpNumber}
                   onChange={(e) =>
-                    setFormData({ ...formData, ktpNumber: e.target.value })
+                    setFormData({
+                      ...formData,
+                      ktpNumber: e.target.value,
+                    })
                   }
-                  placeholder="Enter KTP number"
                   className="bg-input-background border-gray-300"
                 />
               </div>
-
               <div>
-                <Label htmlFor="ktpFile">KTP Document</Label>
+                <Label htmlFor="ktpFile">
+                  KTP File{" "}
+                  <span className="text-gray-400 text-xs">
+                    (Optional)
+                  </span>
+                </Label>
                 <div className="flex gap-2">
                   <Input
                     id="ktpFile"
                     type="file"
-                    onChange={(e) => handleFileUpload('ktp', e)}
+                    onChange={(e) => handleFileUpload("ktp", e)}
                     className="hidden"
                   />
                   <label
@@ -454,59 +856,73 @@ export function VendorDetail({ vendorId, isNewVendor, onBack }: VendorDetailProp
                     className="flex-1 flex items-center justify-between px-3 py-2 border border-gray-300 rounded-md bg-input-background cursor-pointer hover:bg-gray-100"
                   >
                     <span className="text-sm text-gray-500">
-                      {ktpFileName || 'Choose file...'}
+                      {fileNames.ktp || "Choose file..."}
                     </span>
                     <Upload className="w-4 h-4 text-gray-400" />
                   </label>
                 </div>
               </div>
 
+              {/* Bank Info (Mandatory) */}
               <div>
-                <Label htmlFor="bankName">Bank Name</Label>
+                <Label htmlFor="bankName">
+                  Bank Name{" "}
+                  <span className="text-red-500">*</span>
+                </Label>
                 <Input
                   id="bankName"
                   value={formData.bankName}
                   onChange={(e) =>
-                    setFormData({ ...formData, bankName: e.target.value })
+                    setFormData({
+                      ...formData,
+                      bankName: e.target.value,
+                    })
                   }
-                  placeholder="Enter bank name"
                   className="bg-input-background border-gray-300"
                 />
               </div>
-
               <div>
-                <Label htmlFor="bankAccountName">Bank Account Name</Label>
+                <Label htmlFor="bankAccountName">
+                  Bank Account Name
+                </Label>
                 <Input
                   id="bankAccountName"
                   value={formData.bankAccountName}
                   onChange={(e) =>
-                    setFormData({ ...formData, bankAccountName: e.target.value })
+                    setFormData({
+                      ...formData,
+                      bankAccountName: e.target.value,
+                    })
                   }
-                  placeholder="Enter account name"
                   className="bg-input-background border-gray-300"
                 />
               </div>
-
               <div>
-                <Label htmlFor="bankAccountNumber">Bank Account Number</Label>
+                <Label htmlFor="bankAccountNumber">
+                  Bank Account Number{" "}
+                  <span className="text-red-500">*</span>
+                </Label>
                 <Input
                   id="bankAccountNumber"
                   value={formData.bankAccountNumber}
                   onChange={(e) =>
-                    setFormData({ ...formData, bankAccountNumber: e.target.value })
+                    setFormData({
+                      ...formData,
+                      bankAccountNumber: e.target.value,
+                    })
                   }
-                  placeholder="Enter account number"
                   className="bg-input-background border-gray-300"
                 />
               </div>
-
               <div>
-                <Label htmlFor="bankFile">Bank Document File Upload</Label>
+                <Label htmlFor="bankFile">Bank Document</Label>
                 <div className="flex gap-2">
                   <Input
                     id="bankFile"
                     type="file"
-                    onChange={(e) => handleFileUpload('bank', e)}
+                    onChange={(e) =>
+                      handleFileUpload("bank", e)
+                    }
                     className="hidden"
                   />
                   <label
@@ -514,7 +930,7 @@ export function VendorDetail({ vendorId, isNewVendor, onBack }: VendorDetailProp
                     className="flex-1 flex items-center justify-between px-3 py-2 border border-gray-300 rounded-md bg-input-background cursor-pointer hover:bg-gray-100"
                   >
                     <span className="text-sm text-gray-500">
-                      {bankFileName || 'Choose file...'}
+                      {fileNames.bank || "Choose file..."}
                     </span>
                     <Upload className="w-4 h-4 text-gray-400" />
                   </label>
@@ -523,76 +939,79 @@ export function VendorDetail({ vendorId, isNewVendor, onBack }: VendorDetailProp
             </div>
           </div>
 
-          {/* Tax and Fees Configuration */}
+          {/* Tax and Fees */}
           <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-            <h3 className="mb-4 pb-2 border-b">Tax and Fees Configuration</h3>
-
+            <h3 className="mb-4 pb-2 border-b">
+              Tax and Fees Configuration
+            </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <Label htmlFor="ppn">
-                  PPN (%) <span className="text-red-500">*</span>
-                </Label>
+                <Label htmlFor="ppn">PPN (%) *</Label>
                 <Input
                   id="ppn"
                   type="number"
                   value={formData.ppn}
                   onChange={(e) =>
-                    setFormData({ ...formData, ppn: e.target.value })
+                    setFormData({
+                      ...formData,
+                      ppn: e.target.value,
+                    })
                   }
-                  placeholder="0.0"
                   className="bg-input-background border-gray-300"
                 />
               </div>
-
               <div>
                 <Label htmlFor="serviceCharge">
-                  Service Charge (%) <span className="text-red-500">*</span>
+                  Service Charge (%) *
                 </Label>
                 <Input
                   id="serviceCharge"
                   type="number"
                   value={formData.serviceCharge}
                   onChange={(e) =>
-                    setFormData({ ...formData, serviceCharge: e.target.value })
+                    setFormData({
+                      ...formData,
+                      serviceCharge: e.target.value,
+                    })
                   }
-                  placeholder="0.0"
                   className="bg-input-background border-gray-300"
                 />
               </div>
-
               <div>
-                <Label htmlFor="pb1">
-                  PB1 (%) <span className="text-red-500">*</span>
-                </Label>
+                <Label htmlFor="pb1">PB1 (%) *</Label>
                 <Input
                   id="pb1"
                   type="number"
                   value={formData.pb1}
                   onChange={(e) =>
-                    setFormData({ ...formData, pb1: e.target.value })
+                    setFormData({
+                      ...formData,
+                      pb1: e.target.value,
+                    })
                   }
-                  placeholder="0.0"
                   className="bg-input-background border-gray-300"
                 />
               </div>
-
               <div>
                 <Label htmlFor="paymentMethod">
-                  Payment Method <span className="text-red-500">*</span>
+                  Payment Method *
                 </Label>
                 <Select
                   value={formData.paymentMethod}
                   onValueChange={(value) =>
-                    setFormData({ ...formData, paymentMethod: value })
+                    setFormData({
+                      ...formData,
+                      paymentMethod: value,
+                    })
                   }
                 >
                   <SelectTrigger className="bg-input-background border-gray-300">
-                    <SelectValue placeholder="Please Select" />
+                    <SelectValue placeholder="Select" />
                   </SelectTrigger>
                   <SelectContent>
-                    {PAYMENT_METHODS.map((method) => (
-                      <SelectItem key={method} value={method}>
-                        {method}
+                    {PAYMENT_METHODS.map((m) => (
+                      <SelectItem key={m} value={m}>
+                        {m}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -601,11 +1020,12 @@ export function VendorDetail({ vendorId, isNewVendor, onBack }: VendorDetailProp
             </div>
           </div>
 
-          {/* Agreement / Offerings */}
+          {/* Agreement / Offerings (Req 5) */}
           <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
             <div className="flex items-center justify-between mb-4 pb-2 border-b">
               <h3>
-                Agreement / Offerings <span className="text-red-500">*</span>
+                Agreement / Offerings{" "}
+                <span className="text-red-500">*</span>
               </h3>
               <Button
                 onClick={handleAddAgreement}
@@ -620,117 +1040,122 @@ export function VendorDetail({ vendorId, isNewVendor, onBack }: VendorDetailProp
               {formData.agreements?.map((agreement, index) => (
                 <div
                   key={agreement.id}
-                  className="border border-gray-300 rounded-lg p-4 relative"
+                  className="border border-gray-300 rounded-lg p-4 relative bg-gray-50/50"
                 >
                   <div className="flex items-center justify-between mb-4">
-                    <h4>Agreement {index + 1}</h4>
-                    {formData.agreements && formData.agreements.length > 1 && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleRemoveAgreement(agreement.id)}
-                        className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Remove
-                      </Button>
-                    )}
+                    <h4 className="font-semibold text-sm">
+                      Agreement {index + 1}
+                    </h4>
+                    {formData.agreements &&
+                      formData.agreements.length > 1 && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() =>
+                            handleRemoveAgreement(agreement.id)
+                          }
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          Remove
+                        </Button>
+                      )}
                   </div>
-
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <Label htmlFor={`docNumber-${agreement.id}`}>
-                        Document Number <span className="text-red-500">*</span>
-                      </Label>
+                      <Label>Document Number *</Label>
                       <Input
-                        id={`docNumber-${agreement.id}`}
                         value={agreement.documentNumber}
                         onChange={(e) =>
                           handleAgreementChange(
                             agreement.id,
-                            'documentNumber',
-                            e.target.value
+                            "documentNumber",
+                            e.target.value,
                           )
                         }
-                        placeholder="Enter document number"
-                        className="bg-input-background border-gray-300"
+                        className="bg-white"
                       />
                     </div>
-
+                    {/* Req 5: Agreement Type Predefined */}
                     <div>
-                      <Label htmlFor={`startDate-${agreement.id}`}>
-                        Start Date <span className="text-red-500">*</span>
-                      </Label>
+                      <Label>Document Type *</Label>
+                      <Select
+                        value={agreement.agreementType}
+                        onValueChange={(val) =>
+                          handleAgreementChange(
+                            agreement.id,
+                            "agreementType",
+                            val,
+                          )
+                        }
+                      >
+                        <SelectTrigger className="bg-white">
+                          <SelectValue placeholder="Select Type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {AGREEMENT_TYPES.map((t) => (
+                            <SelectItem key={t} value={t}>
+                              {t}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Start Date *</Label>
                       <Input
-                        id={`startDate-${agreement.id}`}
                         type="date"
                         value={agreement.startDate}
                         onChange={(e) =>
                           handleAgreementChange(
                             agreement.id,
-                            'startDate',
-                            e.target.value
+                            "startDate",
+                            e.target.value,
                           )
                         }
-                        className="bg-input-background border-gray-300"
+                        className="bg-white"
                       />
                     </div>
-
                     <div>
-                      <Label htmlFor={`endDate-${agreement.id}`}>
-                        End Date <span className="text-red-500">*</span>
-                      </Label>
+                      <Label>End Date *</Label>
                       <Input
-                        id={`endDate-${agreement.id}`}
                         type="date"
                         value={agreement.endDate}
                         onChange={(e) =>
                           handleAgreementChange(
                             agreement.id,
-                            'endDate',
-                            e.target.value
+                            "endDate",
+                            e.target.value,
                           )
                         }
-                        className="bg-input-background border-gray-300"
+                        className="bg-white"
                       />
                     </div>
-
-                    <div>
-                      <Label htmlFor={`agreementFile-${agreement.id}`}>
-                        Upload Agreement Files <span className="text-red-500">*</span>
-                      </Label>
-                      <div className="flex gap-2">
-                        <Input
-                          id={`agreementFile-${agreement.id}`}
-                          type="file"
-                          className="hidden"
-                        />
-                        <label
-                          htmlFor={`agreementFile-${agreement.id}`}
-                          className="flex-1 flex items-center justify-between px-3 py-2 border border-gray-300 rounded-md bg-input-background cursor-pointer hover:bg-gray-100"
-                        >
-                          <span className="text-sm text-gray-500">
-                            Choose file...
-                          </span>
-                          <Upload className="w-4 h-4 text-gray-400" />
-                        </label>
-                      </div>
+                    <div className="md:col-span-2">
+                      <Label>Upload Agreement File *</Label>
+                      <Input
+                        type="file"
+                        className="bg-white cursor-pointer"
+                      />
                     </div>
                   </div>
                 </div>
               ))}
-
-              {(!formData.agreements || formData.agreements.length === 0) && (
+              {(!formData.agreements ||
+                formData.agreements.length === 0) && (
                 <div className="text-center py-8 text-gray-500">
-                  No agreements added yet. Click "Add Agreement" to create one.
+                  No agreements added yet.
                 </div>
               )}
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex justify-end gap-4">
-            <Button variant="outline" onClick={onBack} className="border-gray-300">
+          <div className="flex justify-end gap-4 pb-10">
+            <Button
+              variant="outline"
+              onClick={onBack}
+              className="border-gray-300"
+            >
               Cancel
             </Button>
             <Button
