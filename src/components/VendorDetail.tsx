@@ -6,12 +6,14 @@ import {
   Upload,
   ArrowLeft,
   X,
+  Check,
+  ChevronsUpDown,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Checkbox } from "./ui/checkbox";
-import { ScrollArea } from "./ui/scroll-area";
+import { Badge } from "./ui/badge";
+import { Separator } from "./ui/separator";
 import {
   Select,
   SelectContent,
@@ -19,14 +21,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
-import { Badge } from "./ui/badge";
-import { Separator } from "./ui/separator";
+// Combobox imports
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "./ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "./ui/popover";
 import { cn } from "./ui/utils";
-import type {
-  VendorData,
-  Agreement,
-  RegionalCoverage,
-} from "../App";
+import type { VendorData, Agreement, VendorType } from "../App";
 import { INDONESIA_LOCATIONS } from "../src/data/mockLocationData";
 
 interface VendorDetailProps {
@@ -48,28 +58,53 @@ const AGREEMENT_TYPES = [
   "NDA",
 ];
 
-// Helper function to calculate agreement status based on dates
+const VENDOR_TYPES: VendorType[] = [
+  "Corporation",
+  "Individual Entrepreneurs",
+  "Overseas Corporation",
+];
+
+// Predefined List of Banks
+const BANK_OPTIONS = [
+  "Bank BCA",
+  "Bank Mandiri",
+  "Bank BNI",
+  "Bank BRI",
+  "Bank CIMB Niaga",
+  "Bank Danamon",
+  "Bank Permata",
+  "Bank Panin",
+  "Bank OCBC NISP",
+  "Bank BTN",
+  "Bank BSI (Syariah Indonesia)",
+  "Citibank",
+  "Standard Chartered",
+  "Bank Mega",
+  "Bank HSBC",
+  "Bank DBS",
+  "Bank UOB",
+  "Bank Maybank",
+  "Bank Sinarmas",
+  "Bank Bukopin",
+].sort();
+
+// Helper to calculate agreement status
 const calculateAgreementStatus = (
   startDate: string,
   endDate: string,
 ): "Active" | "Inactive" => {
   if (!startDate || !endDate) return "Inactive";
-
   const today = new Date();
-  today.setHours(0, 0, 0, 0); // Reset time for accurate date comparison
-
+  today.setHours(0, 0, 0, 0);
   const start = new Date(startDate);
   const end = new Date(endDate);
-
-  // Check if today is between start and end dates (inclusive)
   if (today >= start && today <= end) {
     return "Active";
   }
-
   return "Inactive";
 };
 
-// Mock existing NPWPs for validation (Req 8)
+// Mock existing NPWPs for validation
 const EXISTING_NPWPS = [
   "12.345.678.9-012.000",
   "98.765.432.1-321.000",
@@ -80,6 +115,7 @@ export function VendorDetail({
   isNewVendor,
   onBack,
 }: VendorDetailProps) {
+  // Main Form State
   const [formData, setFormData] = useState<Partial<VendorData>>(
     {
       vendorCode: isNewVendor
@@ -92,12 +128,24 @@ export function VendorDetail({
       regionalCoverages: [],
       address: "",
       phone: "",
+
+      // Legal & Admin defaults
+      vendorType: "Corporation", // Default
       nibNumber: "",
       ktpNumber: "",
       npwpNumber: "",
+      sppkpNumber: "",
+      deedNumber: "",
+      sbuNumber: "",
+      constructionNumber: "",
+      localTaxRegNumber: "",
+      corNumber: "",
+      gptcNumber: "",
+
       bankName: "",
       bankAccountName: "",
       bankAccountNumber: "",
+
       ppn: "",
       serviceCharge: "",
       pb1: "",
@@ -106,22 +154,23 @@ export function VendorDetail({
     },
   );
 
-  // File Names State
-  const [fileNames, setFileNames] = useState({
-    nib: "",
-    ktp: "",
-    npwp: "",
-    bank: "",
-  });
+  // State to track uploaded file names (for UI display)
+  const [fileNames, setFileNames] = useState<
+    Record<string, string>
+  >({});
 
   // Regional Coverage Local State
   const [selectedProvince, setSelectedProvince] = useState("");
   const [selectedCity, setSelectedCity] = useState("");
-  const [selectedDistrict, setSelectedDistrict] = useState(""); // Single select now
+  const [selectedDistrict, setSelectedDistrict] = useState("");
 
+  // Bank Popover State
+  const [openBank, setOpenBank] = useState(false);
+
+  // --- Load Initial Data ---
   useEffect(() => {
     if (!isNewVendor && vendorId) {
-      // Load vendor data - Mock data for demonstration
+      // Mock Data Load
       setFormData({
         vendorCode: "VND001",
         vendorName: "PT Mitra Sejahtera",
@@ -137,9 +186,11 @@ export function VendorDetail({
         ],
         address: "Jl. Sudirman No. 123, Jakarta",
         phone: "+62 21 1234567",
+        vendorType: "Corporation",
         nibNumber: "1234567890",
-        ktpNumber: "3201234567890123",
+        ktpNumber: "",
         npwpNumber: "12.345.678.9-012.000",
+        sppkpNumber: "SPPKP-001",
         bankName: "Bank Mandiri",
         bankAccountName: "PT Mitra Sejahtera",
         bankAccountNumber: "1234567890",
@@ -160,26 +211,19 @@ export function VendorDetail({
         ],
       });
       setFileNames({
-        ...fileNames,
         npwp: "npwp_doc.pdf",
+        sppkp: "sppkp_doc.pdf",
         bank: "bank_doc.pdf",
+        nib: "nib_doc.pdf",
       });
     }
   }, [vendorId, isNewVendor]);
 
-  // --- Regional Coverage Logic ---
+  // --- Helpers for Regional Coverage ---
+  const getCitiesForProvince = () =>
+    INDONESIA_LOCATIONS.find((p) => p.name === selectedProvince)
+      ?.cities || [];
 
-  // Get available cities based on selected province
-  const getCitiesForProvince = () => {
-    return (
-      INDONESIA_LOCATIONS.find(
-        (p) => p.name === selectedProvince,
-      )?.cities || []
-    );
-  };
-
-  // Get available districts based on selected city
-  // AND filter out districts that have already been selected for this vendor
   const getAvailableDistricts = () => {
     const province = INDONESIA_LOCATIONS.find(
       (p) => p.name === selectedProvince,
@@ -187,17 +231,12 @@ export function VendorDetail({
     const allDistricts =
       province?.cities.find((c) => c.name === selectedCity)
         ?.districts || [];
-
-    // Find if we already have coverage for this province/city
     const existingCoverage = formData.regionalCoverages?.find(
       (cov) =>
         cov.province === selectedProvince &&
         cov.city === selectedCity,
     );
-
     if (!existingCoverage) return allDistricts;
-
-    // Filter out already selected districts
     return allDistricts.filter(
       (d) => !existingCoverage.districts.includes(d),
     );
@@ -206,7 +245,6 @@ export function VendorDetail({
   const handleAddCoverage = () => {
     if (!selectedProvince || !selectedCity || !selectedDistrict)
       return;
-
     const currentCoverages = [
       ...(formData.regionalCoverages || []),
     ];
@@ -217,7 +255,6 @@ export function VendorDetail({
     );
 
     if (existingIndex >= 0) {
-      // Add district to existing city coverage
       const updatedDistricts = [
         ...currentCoverages[existingIndex].districts,
         selectedDistrict,
@@ -227,50 +264,42 @@ export function VendorDetail({
         districts: updatedDistricts,
       };
     } else {
-      // Create new coverage entry
       currentCoverages.push({
         province: selectedProvince,
         city: selectedCity,
         districts: [selectedDistrict],
       });
     }
-
     setFormData({
       ...formData,
       regionalCoverages: currentCoverages,
     });
-
-    // Reset District selection only, keep Prov/City for faster entry of next district
     setSelectedDistrict("");
   };
 
   const handleRemoveDistrict = (
-    province: string,
+    prov: string,
     city: string,
-    district: string,
+    dist: string,
   ) => {
     const currentCoverages = [
       ...(formData.regionalCoverages || []),
     ];
-    const existingIndex = currentCoverages.findIndex(
-      (cov) => cov.province === province && cov.city === city,
+    const idx = currentCoverages.findIndex(
+      (cov) => cov.province === prov && cov.city === city,
     );
-
-    if (existingIndex >= 0) {
-      const updatedDistricts = currentCoverages[
-        existingIndex
-      ].districts.filter((d) => d !== district);
-
-      if (updatedDistricts.length === 0) {
-        // If no districts left, remove the whole coverage entry
-        currentCoverages.splice(existingIndex, 1);
+    if (idx >= 0) {
+      const updated = currentCoverages[idx].districts.filter(
+        (d) => d !== dist,
+      );
+      if (updated.length === 0) {
+        currentCoverages.splice(idx, 1);
       } else {
-        currentCoverages[existingIndex] = {
-          ...currentCoverages[existingIndex],
-          districts: updatedDistricts,
+        currentCoverages[idx] = {
+          ...currentCoverages[idx],
+          districts: updated,
         };
       }
-
       setFormData({
         ...formData,
         regionalCoverages: currentCoverages,
@@ -284,7 +313,7 @@ export function VendorDetail({
     setFormData({ ...formData, regionalCoverages: updated });
   };
 
-  // --- Agreement Logic ---
+  // --- Helpers for Agreements ---
   const handleAddAgreement = () => {
     const newAgreement: Agreement = {
       id: Date.now().toString(),
@@ -292,7 +321,7 @@ export function VendorDetail({
       agreementType: "",
       startDate: "",
       endDate: "",
-      status: "Inactive", // Default status
+      status: "Inactive",
       file: null,
     };
     setFormData({
@@ -304,94 +333,275 @@ export function VendorDetail({
     });
   };
 
-  const handleRemoveAgreement = (agreementId: string) => {
+  const handleRemoveAgreement = (id: string) => {
     setFormData({
       ...formData,
       agreements:
-        formData.agreements?.filter(
-          (a) => a.id !== agreementId,
-        ) || [],
+        formData.agreements?.filter((a) => a.id !== id) || [],
     });
   };
 
   const handleAgreementChange = (
-    agreementId: string,
+    id: string,
     field: keyof Agreement,
     value: string,
   ) => {
-    const updatedAgreements = formData.agreements?.map((a) => {
-      if (a.id !== agreementId) return a;
-
-      const updatedAgreement = { ...a, [field]: value };
-
-      // Auto-calculate status when start or end date changes
+    const updated = formData.agreements?.map((a) => {
+      if (a.id !== id) return a;
+      const newA = { ...a, [field]: value };
       if (field === "startDate" || field === "endDate") {
-        const startDate =
-          field === "startDate" ? value : a.startDate;
-        const endDate = field === "endDate" ? value : a.endDate;
-        updatedAgreement.status = calculateAgreementStatus(
-          startDate,
-          endDate,
+        newA.status = calculateAgreementStatus(
+          field === "startDate" ? value : a.startDate,
+          field === "endDate" ? value : a.endDate,
         );
       }
-
-      return updatedAgreement;
+      return newA;
     });
-
-    setFormData({
-      ...formData,
-      agreements: updatedAgreements,
-    });
+    setFormData({ ...formData, agreements: updated });
   };
 
-  // --- File Upload Logic ---
+  // --- Helper for File Upload ---
   const handleFileUpload = (
-    type: keyof typeof fileNames,
+    fieldKey: string,
     event: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const file = event.target.files?.[0];
     if (file) {
-      setFileNames((prev) => ({ ...prev, [type]: file.name }));
+      setFileNames((prev) => ({
+        ...prev,
+        [fieldKey]: file.name,
+      }));
     }
+  };
+
+  // --- Dynamic Mandatory Logic based on Vendor Type ---
+  const isMandatory = (fieldKey: string): boolean => {
+    const type = formData.vendorType;
+
+    // Common Mandatory for all (Bank Info)
+    if (
+      [
+        "bankName",
+        "bankAccountName",
+        "bankAccountNumber",
+        "bankFile",
+      ].includes(fieldKey)
+    ) {
+      return true;
+    }
+
+    if (type === "Corporation") {
+      const mandatoryFields = [
+        "npwpNumber",
+        "npwpFile",
+        "sppkpNumber",
+        "sppkpFile", // SPPKP / Non PKP
+        "nibNumber",
+        "nibFile",
+      ];
+      return mandatoryFields.includes(fieldKey);
+    }
+
+    if (type === "Individual Entrepreneurs") {
+      const mandatoryFields = [
+        "ktpNumber",
+        "ktpFile",
+        "npwpNumber",
+        "npwpFile",
+        "sppkpNumber",
+        "sppkpFile", // Non PKP
+        "nibNumber",
+        "nibFile",
+      ];
+      return mandatoryFields.includes(fieldKey);
+    }
+
+    if (type === "Overseas Corporation") {
+      return true; // All fields mandatory
+    }
+
+    return false;
+  };
+
+  // --- Reusable Component for Document Fields ---
+  const DocumentField = ({
+    label,
+    numberKey,
+    fileKey,
+    placeholder = "",
+  }: {
+    label: string;
+    numberKey?: keyof VendorData;
+    fileKey: string;
+    placeholder?: string;
+  }) => {
+    const numberMandatory = numberKey
+      ? isMandatory(numberKey)
+      : false;
+    const fileMandatory = isMandatory(fileKey);
+
+    return (
+      <div className="space-y-2">
+        <Label className="font-medium">
+          {label}{" "}
+          {(numberMandatory || fileMandatory) && (
+            <span className="text-red-500">*</span>
+          )}
+        </Label>
+
+        {numberKey && (
+          <Input
+            value={(formData[numberKey] as string) || ""}
+            onChange={(e) =>
+              setFormData({
+                ...formData,
+                [numberKey]: e.target.value,
+              })
+            }
+            placeholder={placeholder}
+            className="bg-input-background border-gray-300 mb-2"
+          />
+        )}
+
+        <div className="flex gap-2">
+          <Input
+            id={fileKey}
+            type="file"
+            onChange={(e) => handleFileUpload(fileKey, e)}
+            className="hidden"
+          />
+          <label
+            htmlFor={fileKey}
+            className="flex-1 flex items-center justify-between px-3 py-2 border border-gray-300 rounded-md bg-input-background cursor-pointer hover:bg-gray-100"
+          >
+            <span className="text-sm text-gray-500 truncate max-w-[200px]">
+              {fileNames[fileKey] || "Choose file..."}
+            </span>
+            <Upload className="w-4 h-4 text-gray-400" />
+          </label>
+        </div>
+      </div>
+    );
   };
 
   // --- Save & Validation ---
   const handleSave = () => {
-    // Validation
+    // 1. Basic Validation
     if (!formData.vendorName)
       return alert("Vendor Name is required");
-    if (!formData.picName) return alert("PIC Name is required"); // Req 1
-    if (!formData.email1) return alert("Email 1 is required"); // Req 2
-    if (!formData.email2) return alert("Email 2 is required"); // Req 2
-    if (
-      !formData.regionalCoverages ||
-      formData.regionalCoverages.length === 0
-    ) {
-      return alert(
-        "At least one Regional Coverage must be added",
-      );
-    }
+    if (!formData.picName) return alert("PIC Name is required");
+    if (!formData.email1) return alert("Email 1 is required");
+    if (!formData.email2) return alert("Email 2 is required");
+    if (!formData.regionalCoverages?.length)
+      return alert("Regional Coverage required");
     if (!formData.address) return alert("Address is required");
     if (!formData.phone) return alert("Phone is required");
+    if (!formData.vendorType)
+      return alert("Vendor Type is required");
 
-    // Req 6 Validation
-    if (!formData.npwpNumber)
-      return alert("NPWP Number is required");
-    if (!fileNames.npwp) return alert("NPWP File is required");
-    if (!formData.bankName)
-      return alert("Bank Name is required");
-    if (!formData.bankAccountNumber)
-      return alert("Bank Account Number is required");
-    // Note: KTP and NIB are now optional (Req 6)
+    // 2. Dynamic Legal Validation
+    const type = formData.vendorType;
+    const errors: string[] = [];
 
-    // Req 8: Duplicate NPWP Check
+    const check = (key: keyof VendorData, name: string) => {
+      // @ts-ignore
+      if (
+        isMandatory(key as string) &&
+        !formData[key] &&
+        !fileNames[key]
+      ) {
+        errors.push(`${name} is required for ${type}`);
+      }
+    };
+
+    check("bankName", "Bank Name");
+    check("bankAccountName", "Bank Account Name");
+    check("bankAccountNumber", "Bank Account Number");
+
+    if (
+      isMandatory("bankFile") &&
+      !fileNames["bankFile"] &&
+      !formData.bankFile
+    ) {
+      if (isNewVendor)
+        errors.push("Bank Document File is required");
+    }
+
+    if (type === "Corporation") {
+      check("npwpNumber", "NPWP Number");
+      if (isNewVendor && !fileNames["npwpFile"])
+        errors.push("NPWP File is required");
+      check("sppkpNumber", "SPPKP Number");
+      if (isNewVendor && !fileNames["sppkpFile"])
+        errors.push("SPPKP/Non-PKP File is required");
+      check("nibNumber", "NIB Number");
+      if (isNewVendor && !fileNames["nibFile"])
+        errors.push("NIB File is required");
+    }
+
+    if (type === "Individual Entrepreneurs") {
+      check("ktpNumber", "KTP Number");
+      if (isNewVendor && !fileNames["ktpFile"])
+        errors.push("KTP File is required");
+      check("npwpNumber", "NPWP Number");
+      if (isNewVendor && !fileNames["npwpFile"])
+        errors.push("NPWP File is required");
+      check("sppkpNumber", "Non PKP Number");
+      if (isNewVendor && !fileNames["sppkpFile"])
+        errors.push("Non PKP File is required");
+      check("nibNumber", "NIB Number");
+      if (isNewVendor && !fileNames["nibFile"])
+        errors.push("NIB File is required");
+    }
+
+    if (type === "Overseas Corporation") {
+      const overseasChecks: [
+        keyof VendorData,
+        string,
+        string,
+      ][] = [
+        ["npwpNumber", "NPWP Number", "npwpFile"],
+        ["sppkpNumber", "SPPKP Number", "sppkpFile"],
+        ["nibNumber", "NIB Number", "nibFile"],
+        ["ktpNumber", "KTP Number", "ktpFile"],
+        ["deedNumber", "Deed Number", "deedFile"],
+        ["sbuNumber", "SBU Number", "sbuFile"],
+        [
+          "constructionNumber",
+          "Construction License",
+          "constructionFile",
+        ],
+        [
+          "localTaxRegNumber",
+          "Local Tax Reg",
+          "localTaxRegFile",
+        ],
+        ["corNumber", "COR Number", "corFile"],
+        ["gptcNumber", "GPTC Number", "gptcFile"],
+      ];
+
+      overseasChecks.forEach(([numKey, label, fileKey]) => {
+        check(numKey, label);
+        if (isNewVendor && !fileNames[fileKey])
+          errors.push(`${label} File is required`);
+      });
+      if (isNewVendor && !fileNames["otherLicenseFile"])
+        errors.push("Other Business License File is required");
+    }
+
+    if (errors.length > 0) {
+      alert(
+        "Please fix the following errors:\n\n" +
+          errors.join("\n"),
+      );
+      return;
+    }
+
     if (
       isNewVendor &&
       EXISTING_NPWPS.includes(formData.npwpNumber || "")
     ) {
-      return alert(
-        "This NPWP Number is already registered to another vendor.",
-      );
+      return alert("This NPWP Number is already registered.");
     }
 
     if (
@@ -401,14 +611,13 @@ export function VendorDetail({
       return alert("At least one Agreement is required");
     }
 
-    // Save logic would go here
     alert("Vendor saved successfully!");
     onBack();
   };
 
   return (
     <div className="flex w-full">
-      {/* Sidebar - Same as before */}
+      {/* Sidebar */}
       <aside className="w-64 bg-[#2C3E50] text-white min-h-screen flex-shrink-0">
         <div className="p-4">
           <h1 className="text-white">Red Spark</h1>
@@ -472,26 +681,23 @@ export function VendorDetail({
               General Information
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Vendor Code & Name */}
               <div>
-                <Label htmlFor="vendorCode">
+                <Label>
                   Vendor Code{" "}
                   <span className="text-red-500">*</span>
                 </Label>
                 <Input
-                  id="vendorCode"
                   value={formData.vendorCode}
                   disabled
                   className="bg-gray-100 border-gray-300"
                 />
               </div>
               <div>
-                <Label htmlFor="vendorName">
+                <Label>
                   Vendor Name{" "}
                   <span className="text-red-500">*</span>
                 </Label>
                 <Input
-                  id="vendorName"
                   value={formData.vendorName}
                   onChange={(e) =>
                     setFormData({
@@ -502,15 +708,12 @@ export function VendorDetail({
                   className="bg-input-background border-gray-300"
                 />
               </div>
-
-              {/* Req 1: PIC Name */}
               <div>
-                <Label htmlFor="picName">
+                <Label>
                   PIC Name{" "}
                   <span className="text-red-500">*</span>
                 </Label>
                 <Input
-                  id="picName"
                   value={formData.picName}
                   onChange={(e) =>
                     setFormData({
@@ -518,20 +721,16 @@ export function VendorDetail({
                       picName: e.target.value,
                     })
                   }
-                  placeholder="Enter PIC Name"
                   className="bg-input-background border-gray-300"
                 />
               </div>
-
-              {/* Req 2: Split Email */}
               <div className="flex gap-4">
                 <div className="flex-1">
-                  <Label htmlFor="email1">
+                  <Label>
                     Email 1{" "}
                     <span className="text-red-500">*</span>
                   </Label>
                   <Input
-                    id="email1"
                     type="email"
                     value={formData.email1}
                     onChange={(e) =>
@@ -544,12 +743,11 @@ export function VendorDetail({
                   />
                 </div>
                 <div className="flex-1">
-                  <Label htmlFor="email2">
+                  <Label>
                     Email 2{" "}
                     <span className="text-red-500">*</span>
                   </Label>
                   <Input
-                    id="email2"
                     type="email"
                     value={formData.email2}
                     onChange={(e) =>
@@ -562,15 +760,12 @@ export function VendorDetail({
                   />
                 </div>
               </div>
-
-              {/* Address & Phone */}
-              <div className="md:col-span-1">
-                <Label htmlFor="address">
+              <div>
+                <Label>
                   Address{" "}
                   <span className="text-red-500">*</span>
                 </Label>
                 <Input
-                  id="address"
                   value={formData.address}
                   onChange={(e) =>
                     setFormData({
@@ -582,11 +777,10 @@ export function VendorDetail({
                 />
               </div>
               <div>
-                <Label htmlFor="phone">
+                <Label>
                   Phone <span className="text-red-500">*</span>
                 </Label>
                 <Input
-                  id="phone"
                   value={formData.phone}
                   onChange={(e) =>
                     setFormData({
@@ -601,7 +795,6 @@ export function VendorDetail({
 
             <Separator className="my-6" />
 
-            {/* Req 9 & New Req 1: Regional Coverage (Cascading Single Select) */}
             <h4 className="font-medium mb-3">
               Regional Coverage
             </h4>
@@ -656,9 +849,7 @@ export function VendorDetail({
                 <Label className="mb-2 block">District</Label>
                 <Select
                   value={selectedDistrict}
-                  onValueChange={(val) =>
-                    setSelectedDistrict(val)
-                  }
+                  onValueChange={setSelectedDistrict}
                   disabled={!selectedCity}
                 >
                   <SelectTrigger className="bg-input-background">
@@ -671,12 +862,6 @@ export function VendorDetail({
                           {d}
                         </SelectItem>
                       ))}
-                    {selectedCity &&
-                      getAvailableDistricts().length === 0 && (
-                        <div className="p-2 text-sm text-muted-foreground text-center">
-                          All districts added
-                        </div>
-                      )}
                   </SelectContent>
                 </Select>
               </div>
@@ -695,62 +880,50 @@ export function VendorDetail({
               </div>
             </div>
 
-            {/* List Selected Coverages */}
             <div className="space-y-3 mt-6">
-              {formData.regionalCoverages &&
-              formData.regionalCoverages.length > 0 ? (
-                <div className="border rounded-md divide-y">
-                  {formData.regionalCoverages.map(
-                    (cov, idx) => (
-                      <div
-                        key={`${cov.province}-${cov.city}`}
-                        className="p-3 bg-gray-50 flex flex-col gap-2"
+              {formData.regionalCoverages?.map((cov, idx) => (
+                <div
+                  key={`${cov.province}-${cov.city}`}
+                  className="p-3 bg-gray-50 flex flex-col gap-2 border rounded-md"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-sm text-gray-800">
+                      {cov.province} &mdash; {cov.city}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        handleRemoveWholeCoverage(idx)
+                      }
+                      className="text-red-500 hover:text-red-700 h-6 px-2 text-xs"
+                    >
+                      Remove Region
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {cov.districts.map((d) => (
+                      <Badge
+                        key={d}
+                        variant="secondary"
+                        className="text-xs flex items-center gap-1 px-2 py-1 bg-white border border-gray-200"
                       >
-                        <div className="flex items-center justify-between">
-                          <span className="font-semibold text-sm text-gray-800">
-                            {cov.province} &mdash; {cov.city}
-                          </span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() =>
-                              handleRemoveWholeCoverage(idx)
-                            }
-                            className="text-red-500 hover:text-red-700 h-6 px-2 text-xs"
-                          >
-                            Remove Region
-                          </Button>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {cov.districts.map((d) => (
-                            <Badge
-                              key={d}
-                              variant="secondary"
-                              className="text-xs flex items-center gap-1 px-2 py-1 bg-white border border-gray-200"
-                            >
-                              {d}
-                              <X
-                                className="h-3 w-3 cursor-pointer hover:text-red-500 transition-colors"
-                                onClick={() =>
-                                  handleRemoveDistrict(
-                                    cov.province,
-                                    cov.city,
-                                    d,
-                                  )
-                                }
-                              />
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                    ),
-                  )}
+                        {d}
+                        <X
+                          className="h-3 w-3 cursor-pointer hover:text-red-500 transition-colors"
+                          onClick={() =>
+                            handleRemoveDistrict(
+                              cov.province,
+                              cov.city,
+                              d,
+                            )
+                          }
+                        />
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
-              ) : (
-                <div className="text-center p-4 border border-dashed rounded-md text-gray-500 text-sm">
-                  No regional coverage added yet.
-                </div>
-              )}
+              ))}
             </div>
           </div>
 
@@ -759,169 +932,184 @@ export function VendorDetail({
             <h3 className="mb-4 pb-2 border-b">
               Legal and Admin Information
             </h3>
+
+            {/* Vendor Type Selection */}
+            <div className="mb-6 max-w-md">
+              <Label className="mb-2 block">
+                Vendor Type{" "}
+                <span className="text-red-500">*</span>
+              </Label>
+              <Select
+                value={formData.vendorType}
+                onValueChange={(val: VendorType) =>
+                  setFormData({ ...formData, vendorType: val })
+                }
+              >
+                <SelectTrigger className="bg-input-background border-gray-300">
+                  <SelectValue placeholder="Select Vendor Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {VENDOR_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {t}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+              <DocumentField
+                label="NPWP"
+                numberKey="npwpNumber"
+                fileKey="npwpFile"
+                placeholder="xx.xxx.xxx.x-xxx.xxx"
+              />
+
+              <DocumentField
+                label={
+                  formData.vendorType ===
+                  "Individual Entrepreneurs"
+                    ? "Non PKP Document"
+                    : "SPPKP / Non PKP"
+                }
+                numberKey="sppkpNumber"
+                fileKey="sppkpFile"
+              />
+
+              <DocumentField
+                label="NIB"
+                numberKey="nibNumber"
+                fileKey="nibFile"
+              />
+
+              <DocumentField
+                label="KTP"
+                numberKey="ktpNumber"
+                fileKey="ktpFile"
+              />
+
+              <DocumentField
+                label="Notarial Deed of Establishment"
+                numberKey="deedNumber"
+                fileKey="deedFile"
+              />
+
+              <DocumentField
+                label="SBU (Sertifikat Badan Usaha)"
+                numberKey="sbuNumber"
+                fileKey="sbuFile"
+              />
+
+              <DocumentField
+                label="Construction Business License"
+                numberKey="constructionNumber"
+                fileKey="constructionFile"
+              />
+
+              <DocumentField
+                label="Other Business License"
+                fileKey="otherLicenseFile"
+              />
+
+              <DocumentField
+                label="Reg. Business in Local Tax"
+                numberKey="localTaxRegNumber"
+                fileKey="localTaxRegFile"
+              />
+
+              <DocumentField
+                label="COR (Cert. of Owner's Rep)"
+                numberKey="corNumber"
+                fileKey="corFile"
+              />
+
+              <DocumentField
+                label="GPTC"
+                numberKey="gptcNumber"
+                fileKey="gptcFile"
+              />
+            </div>
+
+            <Separator className="my-6" />
+            <h4 className="font-medium mb-4">
+              Bank Information
+            </h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Req 6: NPWP (Mandatory) */}
-              <div>
-                <Label htmlFor="npwpNumber">
-                  NPWP Number{" "}
-                  <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="npwpNumber"
-                  value={formData.npwpNumber}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      npwpNumber: e.target.value,
-                    })
-                  }
-                  placeholder="xx.xxx.xxx.x-xxx.xxx"
-                  className="bg-input-background border-gray-300"
-                />
-              </div>
-              <div>
-                <Label htmlFor="npwpFile">
-                  NPWP File{" "}
-                  <span className="text-red-500">*</span>
-                </Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="npwpFile"
-                    type="file"
-                    onChange={(e) =>
-                      handleFileUpload("npwp", e)
-                    }
-                    className="hidden"
-                  />
-                  <label
-                    htmlFor="npwpFile"
-                    className="flex-1 flex items-center justify-between px-3 py-2 border border-gray-300 rounded-md bg-input-background cursor-pointer hover:bg-gray-100"
-                  >
-                    <span className="text-sm text-gray-500">
-                      {fileNames.npwp || "Choose file..."}
-                    </span>
-                    <Upload className="w-4 h-4 text-gray-400" />
-                  </label>
-                </div>
-              </div>
-
-              {/* NIB & KTP (Optional) */}
-              <div>
-                <Label htmlFor="nibNumber">
-                  NIB Number{" "}
-                  <span className="text-gray-400 text-xs">
-                    (Optional)
-                  </span>
-                </Label>
-                <Input
-                  id="nibNumber"
-                  type="number"
-                  value={formData.nibNumber}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      nibNumber: e.target.value,
-                    })
-                  }
-                  className="bg-input-background border-gray-300"
-                />
-              </div>
-              <div>
-                <Label htmlFor="nibFile">
-                  NIB File{" "}
-                  <span className="text-gray-400 text-xs">
-                    (Optional)
-                  </span>
-                </Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="nibFile"
-                    type="file"
-                    onChange={(e) => handleFileUpload("nib", e)}
-                    className="hidden"
-                  />
-                  <label
-                    htmlFor="nibFile"
-                    className="flex-1 flex items-center justify-between px-3 py-2 border border-gray-300 rounded-md bg-input-background cursor-pointer hover:bg-gray-100"
-                  >
-                    <span className="text-sm text-gray-500">
-                      {fileNames.nib || "Choose file..."}
-                    </span>
-                    <Upload className="w-4 h-4 text-gray-400" />
-                  </label>
-                </div>
-              </div>
-
-              <div>
-                <Label htmlFor="ktpNumber">
-                  KTP Number{" "}
-                  <span className="text-gray-400 text-xs">
-                    (Optional)
-                  </span>
-                </Label>
-                <Input
-                  id="ktpNumber"
-                  type="number"
-                  value={formData.ktpNumber}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      ktpNumber: e.target.value,
-                    })
-                  }
-                  className="bg-input-background border-gray-300"
-                />
-              </div>
-              <div>
-                <Label htmlFor="ktpFile">
-                  KTP File{" "}
-                  <span className="text-gray-400 text-xs">
-                    (Optional)
-                  </span>
-                </Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="ktpFile"
-                    type="file"
-                    onChange={(e) => handleFileUpload("ktp", e)}
-                    className="hidden"
-                  />
-                  <label
-                    htmlFor="ktpFile"
-                    className="flex-1 flex items-center justify-between px-3 py-2 border border-gray-300 rounded-md bg-input-background cursor-pointer hover:bg-gray-100"
-                  >
-                    <span className="text-sm text-gray-500">
-                      {fileNames.ktp || "Choose file..."}
-                    </span>
-                    <Upload className="w-4 h-4 text-gray-400" />
-                  </label>
-                </div>
-              </div>
-
-              {/* Bank Info (Mandatory) */}
-              <div>
-                <Label htmlFor="bankName">
+              {/* Bank Name Dropdown with Search */}
+              <div className="flex flex-col gap-2">
+                <Label>
                   Bank Name{" "}
                   <span className="text-red-500">*</span>
                 </Label>
-                <Input
-                  id="bankName"
-                  value={formData.bankName}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      bankName: e.target.value,
-                    })
-                  }
-                  className="bg-input-background border-gray-300"
-                />
+                <Popover
+                  open={openBank}
+                  onOpenChange={setOpenBank}
+                >
+                  <PopoverTrigger
+                    type="button"
+                    role="combobox"
+                    aria-expanded={openBank}
+                    className={cn(
+                      "flex h-9 w-full items-center justify-between rounded-md border border-gray-300 bg-input-background px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+                      !formData.bankName &&
+                        "text-muted-foreground",
+                    )}
+                  >
+                    {formData.bankName
+                      ? formData.bankName
+                      : "Select bank..."}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </PopoverTrigger>
+                  {/* Added side="bottom" to force position below the field */}
+                  <PopoverContent
+                    className="w-[--radix-popover-trigger-width] min-w-[300px] p-0"
+                    align="start"
+                    side="bottom"
+                  >
+                    <Command>
+                      <CommandInput placeholder="Search bank..." />
+                      <CommandList>
+                        <CommandEmpty>
+                          No bank found.
+                        </CommandEmpty>
+                        <CommandGroup>
+                          {BANK_OPTIONS.map((bank) => (
+                            <CommandItem
+                              key={bank}
+                              value={bank}
+                              onSelect={() => {
+                                setFormData({
+                                  ...formData,
+                                  bankName: bank,
+                                });
+                                setOpenBank(false);
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  formData.bankName === bank
+                                    ? "opacity-100"
+                                    : "opacity-0",
+                                )}
+                              />
+                              {bank}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
+
               <div>
-                <Label htmlFor="bankAccountName">
-                  Bank Account Name
+                <Label>
+                  Bank Name Account (Holder){" "}
+                  <span className="text-red-500">*</span>
                 </Label>
                 <Input
-                  id="bankAccountName"
                   value={formData.bankAccountName}
                   onChange={(e) =>
                     setFormData({
@@ -932,45 +1120,12 @@ export function VendorDetail({
                   className="bg-input-background border-gray-300"
                 />
               </div>
-              <div>
-                <Label htmlFor="bankAccountNumber">
-                  Bank Account Number{" "}
-                  <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="bankAccountNumber"
-                  value={formData.bankAccountNumber}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      bankAccountNumber: e.target.value,
-                    })
-                  }
-                  className="bg-input-background border-gray-300"
-                />
-              </div>
-              <div>
-                <Label htmlFor="bankFile">Bank Document</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="bankFile"
-                    type="file"
-                    onChange={(e) =>
-                      handleFileUpload("bank", e)
-                    }
-                    className="hidden"
-                  />
-                  <label
-                    htmlFor="bankFile"
-                    className="flex-1 flex items-center justify-between px-3 py-2 border border-gray-300 rounded-md bg-input-background cursor-pointer hover:bg-gray-100"
-                  >
-                    <span className="text-sm text-gray-500">
-                      {fileNames.bank || "Choose file..."}
-                    </span>
-                    <Upload className="w-4 h-4 text-gray-400" />
-                  </label>
-                </div>
-              </div>
+
+              <DocumentField
+                label="Bank Account Number"
+                numberKey="bankAccountNumber"
+                fileKey="bankFile"
+              />
             </div>
           </div>
 
@@ -981,9 +1136,8 @@ export function VendorDetail({
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <Label htmlFor="ppn">PPN (%) *</Label>
+                <Label>PPN (%) *</Label>
                 <Input
-                  id="ppn"
                   type="number"
                   value={formData.ppn}
                   onChange={(e) =>
@@ -996,11 +1150,8 @@ export function VendorDetail({
                 />
               </div>
               <div>
-                <Label htmlFor="serviceCharge">
-                  Service Charge (%) *
-                </Label>
+                <Label>Service Charge (%) *</Label>
                 <Input
-                  id="serviceCharge"
                   type="number"
                   value={formData.serviceCharge}
                   onChange={(e) =>
@@ -1013,9 +1164,8 @@ export function VendorDetail({
                 />
               </div>
               <div>
-                <Label htmlFor="pb1">PB1 (%) *</Label>
+                <Label>PB1 (%) *</Label>
                 <Input
-                  id="pb1"
                   type="number"
                   value={formData.pb1}
                   onChange={(e) =>
@@ -1028,15 +1178,13 @@ export function VendorDetail({
                 />
               </div>
               <div>
-                <Label htmlFor="paymentMethod">
-                  Payment Method *
-                </Label>
+                <Label>Payment Method *</Label>
                 <Select
                   value={formData.paymentMethod}
-                  onValueChange={(value) =>
+                  onValueChange={(val) =>
                     setFormData({
                       ...formData,
-                      paymentMethod: value,
+                      paymentMethod: val,
                     })
                   }
                 >
@@ -1055,7 +1203,7 @@ export function VendorDetail({
             </div>
           </div>
 
-          {/* Agreement / Offerings (Req 5) */}
+          {/* Agreement / Offerings */}
           <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
             <div className="flex items-center justify-between mb-4 pb-2 border-b">
               <h3>
@@ -1066,11 +1214,9 @@ export function VendorDetail({
                 onClick={handleAddAgreement}
                 className="bg-[#17A2B8] hover:bg-[#138496] text-white"
               >
-                <Plus className="w-4 h-4 mr-2" />
-                Add Agreement
+                <Plus className="w-4 h-4 mr-2" /> Add Agreement
               </Button>
             </div>
-
             <div className="space-y-6">
               {formData.agreements?.map((agreement, index) => (
                 <div
@@ -1091,7 +1237,7 @@ export function VendorDetail({
                           }
                           className="text-red-500 hover:text-red-700"
                         >
-                          <Trash2 className="w-4 h-4 mr-2" />
+                          <Trash2 className="w-4 h-4 mr-2" />{" "}
                           Remove
                         </Button>
                       )}
@@ -1111,7 +1257,6 @@ export function VendorDetail({
                         className="bg-white"
                       />
                     </div>
-                    {/* Req 5: Agreement Type Predefined */}
                     <div>
                       <Label>Document Type *</Label>
                       <Select

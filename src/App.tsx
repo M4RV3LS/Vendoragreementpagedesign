@@ -22,6 +22,11 @@ export interface Agreement {
   file: File | null;
 }
 
+export type VendorType =
+  | "Corporation"
+  | "Individual Entrepreneurs"
+  | "Overseas Corporation";
+
 export interface VendorData {
   id: string;
   createDate: string;
@@ -39,15 +44,44 @@ export interface VendorData {
   // Req 9: Regional Coverage (Replaces simple region array)
   regionalCoverages: RegionalCoverage[];
 
-  // Req 6: Admin Info updates
+  // Legal & Admin Info
+  vendorType?: VendorType; // New Req: Vendor Type
+
+  // Documents (Number + File)
   nibNumber?: string;
   nibFile?: File | null;
+
   ktpNumber?: string;
   ktpFile?: File | null;
 
-  npwpNumber: string; // Req 6 Mandatory
-  npwpFile: File | null; // Req 6 Mandatory
+  npwpNumber: string; // Req 6 Mandatory base
+  npwpFile: File | null; // Req 6 Mandatory base
 
+  // New Fields from Requirement 1
+  sppkpNumber?: string;
+  sppkpFile?: File | null;
+
+  deedNumber?: string; // Notarial Deed
+  deedFile?: File | null;
+
+  sbuNumber?: string; // SBU
+  sbuFile?: File | null;
+
+  constructionNumber?: string;
+  constructionFile?: File | null;
+
+  otherLicenseFile?: File | null; // File only
+
+  localTaxRegNumber?: string; // Registration of Business in Local Tax
+  localTaxRegFile?: File | null;
+
+  corNumber?: string; // Certificate of Owner's Representative
+  corFile?: File | null;
+
+  gptcNumber?: string; // General Purchase Terms and Conditions
+  gptcFile?: File | null;
+
+  // Bank Info
   bankName: string; // Req 6 Mandatory
   bankAccountName: string;
   bankAccountNumber: string; // Req 6 Mandatory
